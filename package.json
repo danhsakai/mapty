@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:chrome": "node scripts/open-when-ready.js http://localhost:5173 & vite --strictPort",
     "build": "vite build",
     "preview": "vite preview"
   },
