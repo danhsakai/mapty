@@ -6,55 +6,80 @@ const months = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Th�
 const form = document.querySelector('.form');
 const containerWorkouts = document.querySelector('.workouts');
 const inputType = document.querySelector('.form__input--type');
-const inputDistance = document.querySelector('.form__input--distance');
-const inputDuration = document.querySelector('.form__input--duration');
-const inputCadence = document.querySelector('.form__input--cadence');
-const inputElevation = document.querySelector('.form__input--elevation');
+let inputDistance = document.querySelector('.form__input--distance');
+let inputDuration = document.querySelector('.form__input--duration');
+let inputCadence = document.querySelector('.form__input--cadence');
+let inputElevation = document.querySelector('.form__input--elevation');
 let map, mapEvent;
-// geolocation API
-navigator.geolocation.getCurrentPosition(
-  function (position) {
+
+// class structure
+class App {
+  #map;
+  #mapEvent;
+  constructor() {
+    this.#getPosition();
+    form.addEventListener('submit', this.#newWorkout.bind(this));
+    inputType.addEventListener('change', this.#toggleElevationField);
+  }
+
+  #getPosition() {
+    // geolocation API
+    navigator.geolocation.getCurrentPosition(
+      this.#loadMap.bind(this),
+      function () {
+        alert('Không thể lấy vị trí của bạn!');
+      }
+    );
+  }
+
+  #loadMap(position) {
     const { latitude, longitude } = position.coords;
     const currentCoords = [latitude, longitude];
     // API set mark on map
-    map = L.map('map').setView(currentCoords, 14);
+    this.#map = L.map('map').setView(currentCoords, 14);
 
     L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(map);
-    map.on('click', function (mapE) {
-      mapEvent = mapE;
-      form.classList.remove('hidden');
-      inputDistance.focus();
-    });
-  },
-  function () {
-    alert('Không thể lấy vị trí của bạn!');
+    }).addTo(this.#map);
+    this.#map.on('click', this.#showForm.bind(this));
   }
-);
 
-form.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const { lat, lng } = mapEvent.latlng;
-  // Display maker
-  L.marker([lat, lng])
-    .addTo(map)
-    .bindPopup(
-      L.popup({
-        maxWidth: 250,
-        minWidth: 100,
-        autoClose: false,
-        closeOnClick: false,
-        className: 'running-popup',
-      })
-    )
-    .setPopupContent(`Vi khi sau khi click`)
-    .openPopup();
-  form.classList.add('hidden');
-});
+  #showForm(mapE) {
+    this.#mapEvent = mapE;
+    form.classList.remove('hidden');
+    inputDistance.focus();
+  }
 
-inputType.addEventListener('change', () => {
-  inputElevation.closest('.form__row').classList.toggle('form__row--hidden');
-  inputCadence.closest('.form__row').classList.toggle('form__row--hidden');
-});
+  #toggleElevationField() {
+    inputElevation.closest('.form__row').classList.toggle('form__row--hidden');
+    inputCadence.closest('.form__row').classList.toggle('form__row--hidden');
+  }
+
+  #newWorkout(e) {
+    e.preventDefault();
+    inputDistance.value =
+      inputDuration.value =
+      inputCadence.value =
+      inputElevation =
+        '';
+    const { lat, lng } = this.#mapEvent.latlng;
+    // Display maker
+    L.marker([lat, lng])
+      .addTo(this.#map)
+      .bindPopup(
+        L.popup({
+          maxWidth: 250,
+          minWidth: 100,
+          autoClose: false,
+          closeOnClick: false,
+          className: 'running-popup',
+        })
+      )
+      .setPopupContent(`Vi khi sau khi click`)
+      .openPopup();
+    form.classList.add('hidden');
+  }
+}
+
+const app = new App();
