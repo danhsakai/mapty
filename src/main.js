@@ -2,6 +2,7 @@
 
 // prettier-ignore
 
+const workoutContainer = document.querySelector('.workouts');
 const form = document.querySelector('.form');
 const inputType = document.querySelector('.form__input--type');
 const inputDistance = document.querySelector('.form__input--distance');
@@ -78,6 +79,7 @@ class App {
     inputType.addEventListener('change', this.#toggleElevationField.bind(this));
     // Sync field visibility with current selection on load
     this.#toggleElevationField();
+    workoutContainer.addEventListener('click', this.#toPopup.bind(this));
   }
 
   #getPosition() {
@@ -245,6 +247,19 @@ class App {
       `;
     }
     form.insertAdjacentHTML('afterend', html);
+  }
+  #toPopup(e) {
+    const workoutEl = e.target.closest('.workout');
+    console.log(workoutEl);
+
+    if (!workoutEl) return;
+    const workout = this.workouts.find(
+      (work) => work.id == workoutEl.dataset.id
+    );
+    this.#map.setView(workout.coords, 14, {
+      animate: true,
+      pan: { duration: 1 },
+    });
   }
 }
 
