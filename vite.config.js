@@ -1,7 +1,12 @@
 import { defineConfig } from 'vite';
 
-// Dùng base cho build (GitHub Pages), giữ dev chạy ở '/'
-export default defineConfig(({ command }) => ({
-  base: command === 'build' ? '/mapty/' : '/',
-}));
+// Tự động xử lý base path cho GitHub Pages hoặc Vercel
+export default defineConfig(({ command }) => {
+  // Nếu deploy trên Vercel hoặc môi trường khác, dùng root '/'
+  // Nếu deploy trên GitHub Pages, dùng '/mapty/'
+  const isGitHubPages = process.env.GITHUB_ACTIONS === 'true';
 
+  return {
+    base: command === 'build' && isGitHubPages ? '/mapty/' : '/',
+  };
+});

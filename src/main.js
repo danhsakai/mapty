@@ -74,6 +74,7 @@ class App {
   #mapEvent;
   workouts = [];
   constructor() {
+    this._getLocalStorage();
     this.#getPosition();
     form.addEventListener('submit', this.#newWorkout.bind(this));
     inputType.addEventListener('change', this.#toggleElevationField.bind(this));
@@ -103,6 +104,8 @@ class App {
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(this.#map);
     this.#map.on('click', this.#showForm.bind(this));
+    // Render markers for any workouts loaded from localStorage
+    this.workouts.forEach((work) => this.#renderWorkoutMarker(work));
   }
 
   #showForm(mapE) {
@@ -177,6 +180,7 @@ class App {
         '';
     inputType.value = 'running';
     this.#toggleElevationField();
+    this._setLocalStorage();
   }
 
   #renderWorkoutMarker(workout) {
@@ -247,6 +251,48 @@ class App {
       `;
     }
     form.insertAdjacentHTML('afterend', html);
+  }
+  _setLocalStorage() {
+    localStorage.setItem('workouts', JSON.stringify(this.workouts));
+  }
+
+  _getLocalStorage() {
+    const data = localStorage.getItem('workouts');
+    if (!data) return;
+
+    try {
+      const items = JSON.parse(data);
+      this.workouts = items.map((obj) => {
+        if (obj.type === 'running') {
+          const run = new Running(
+            obj.coords,
+            obj.distance,
+            obj.duration,
+            obj.cadence
+          );
+          run.id = obj.id;
+          run.date = new Date(obj.date);
+          run.setDescription();
+          return run;
+        }
+
+        const cyc = new Cycling(
+          obj.coords,
+          obj.distance,
+          obj.duration,
+          obj.elevation
+        );
+        cyc.id = obj.id;
+        cyc.date = new Date(obj.date);
+        cyc.setDescription();
+        return cyc;
+      });
+
+      // Render workout list entries (markers will be rendered after map loads)
+      this.workouts.forEach((w) => this.#renderWorkout(w));
+    } catch (err) {
+      console.error('Failed to parse workouts from localStorage', err);
+    }
   }
   #toPopup(e) {
     const workoutEl = e.target.closest('.workout');
