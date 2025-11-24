@@ -9,6 +9,8 @@ const inputDistance = document.querySelector('.form__input--distance');
 const inputDuration = document.querySelector('.form__input--duration');
 const inputCadence = document.querySelector('.form__input--cadence');
 const inputElevation = document.querySelector('.form__input--elevation');
+const sortDropdown = document.querySelector('.sort-dropdown');
+const btnDeleteAll = document.querySelector('.btn-delete-all');
 
 // workout class
 class Workout {
@@ -72,6 +74,9 @@ class Cycling extends Workout {
 class App {
   #map;
   #mapEvent;
+  #markers = [];
+  #editMode = false;
+  #editId = null;
   workouts = [];
   constructor() {
     this._getLocalStorage();
@@ -80,7 +85,12 @@ class App {
     inputType.addEventListener('change', this.#toggleElevationField.bind(this));
     // Sync field visibility with current selection on load
     this.#toggleElevationField();
-    workoutContainer.addEventListener('click', this.#toPopup.bind(this));
+    workoutContainer.addEventListener(
+      'click',
+      this.#handleWorkoutClick.bind(this)
+    );
+    sortDropdown.addEventListener('change', this.#sortWorkouts.bind(this));
+    btnDeleteAll.addEventListener('click', this.#deleteAllWorkouts.bind(this));
   }
 
   #getPosition() {
@@ -138,41 +148,99 @@ class App {
     const type = inputType.value;
     const duration = +inputDuration.value;
     const distance = +inputDistance.value;
-    const { lat, lng } = this.#mapEvent.latlng;
-    let workout;
+
     // check valid data
     const validInputs = (...inputs) =>
       inputs.every((inp) => Number.isFinite(inp));
     const isPositiveInput = (...inputs) => inputs.every((inp) => inp > 0);
 
-    // if workout running, create running object
-    if (type === 'running') {
-      const cadence = +inputCadence.value;
-      if (
-        !validInputs(duration, distance, cadence) ||
-        !isPositiveInput(duration, distance, cadence)
-      )
-        return alert('Vui lòng nhập giá trị không âm!');
-      workout = new Running([lat, lng], distance, duration, cadence);
-    }
-    // if workout cycling, create cycling object
-    if (type === 'cycling') {
-      const elevation = +inputElevation.value;
-      if (
-        !validInputs(duration, distance, elevation) ||
-        !isPositiveInput(duration, distance)
-      )
-        return alert('Vui lòng nhập giá trị không âm!');
-      workout = new Cycling([lat, lng], distance, duration, elevation);
+    // If in edit mode, update existing workout
+    if (this.#editMode) {
+      const workout = this.workouts.find((work) => work.id === this.#editId);
+      if (!workout) return;
+
+      // Validate inputs
+      if (type === 'running') {
+        const cadence = +inputCadence.value;
+        if (
+          !validInputs(duration, distance, cadence) ||
+          !isPositiveInput(duration, distance, cadence)
+        )
+          return alert('Vui lòng nhập giá trị không âm!');
+
+        // Update workout properties
+        workout.distance = distance;
+        workout.duration = duration;
+        workout.cadence = cadence;
+        workout.pace = (duration / distance).toFixed(2);
+      } else {
+        const elevation = +inputElevation.value;
+        if (
+          !validInputs(duration, distance, elevation) ||
+          !isPositiveInput(duration, distance)
+        )
+          return alert('Vui lòng nhập giá trị không âm!');
+
+        // Update workout properties
+        workout.distance = distance;
+        workout.duration = duration;
+        workout.elevation = elevation;
+        workout.speed = (distance / (duration / 60)).toFixed(2);
+      }
+
+      workout.setDescription();
+
+      // Update DOM
+      const workoutEl = document.querySelector(`[data-id="${this.#editId}"]`);
+      if (workoutEl) workoutEl.remove();
+      this.#renderWorkout(workout);
+
+      // Update marker popup
+      const markerObj = this.#markers.find((m) => m.id === this.#editId);
+      if (markerObj) {
+        markerObj.marker.setPopupContent(
+          `${workout.type === 'running' ? '🏃‍♂️' : '🚴‍♂️'} ${workout.description}`
+        );
+      }
+
+      // Exit edit mode
+      this.#editMode = false;
+      this.#editId = null;
+      form.querySelector('.form__btn').textContent = 'Xong';
+    } else {
+      // Create new workout
+      const { lat, lng } = this.#mapEvent.latlng;
+      let workout;
+
+      if (type === 'running') {
+        const cadence = +inputCadence.value;
+        if (
+          !validInputs(duration, distance, cadence) ||
+          !isPositiveInput(duration, distance, cadence)
+        )
+          return alert('Vui lòng nhập giá trị không âm!');
+        workout = new Running([lat, lng], distance, duration, cadence);
+      }
+
+      if (type === 'cycling') {
+        const elevation = +inputElevation.value;
+        if (
+          !validInputs(duration, distance, elevation) ||
+          !isPositiveInput(duration, distance)
+        )
+          return alert('Vui lòng nhập giá trị không âm!');
+        workout = new Cycling([lat, lng], distance, duration, elevation);
+      }
+
+      // add new object to workout array
+      this.workouts.push(workout);
+      // Display marker
+      this.#renderWorkoutMarker(workout);
+      // add workout to the list
+      this.#renderWorkout(workout);
     }
 
-    // add new object to workout array
-    this.workouts.push(workout);
-    // Display maker
-    this.#renderWorkoutMarker(workout);
-
-    // add workout to the list
-    this.#renderWorkout(workout);
+    // Clear inputs
     inputDistance.value =
       inputDuration.value =
       inputCadence.value =
@@ -184,7 +252,7 @@ class App {
   }
 
   #renderWorkoutMarker(workout) {
-    L.marker(workout.coords)
+    const marker = L.marker(workout.coords)
       .addTo(this.#map)
       .bindPopup(
         L.popup({
@@ -199,13 +267,21 @@ class App {
         `${workout.type === 'running' ? '🏃‍♂️' : '🚴‍♂️'} ${workout.description}`
       )
       .openPopup();
-    this.#hideForm();
+
+    // Store marker reference with workout id
+    this.#markers.push({ id: workout.id, marker });
+
+    if (!this.#editMode) this.#hideForm();
   }
 
   #renderWorkout(workout) {
     let html = `
       <li class="workout workout--${workout.type}" data-id="${workout.id}">
         <h2 class="workout__title">${workout.description}</h2>
+        <div class="workout__actions">
+          <button class="workout__btn workout__btn--edit" data-action="edit">✏️</button>
+          <button class="workout__btn workout__btn--delete" data-action="delete">🗑️</button>
+        </div>
         <div class="workout__details">
           <span class="workout__icon">${
             workout.type === 'running' ? '🏃‍♂️' : '🚴‍♂️'
@@ -294,18 +370,117 @@ class App {
       console.error('Failed to parse workouts from localStorage', err);
     }
   }
-  #toPopup(e) {
+  #handleWorkoutClick(e) {
+    const action = e.target.dataset.action;
     const workoutEl = e.target.closest('.workout');
-    console.log(workoutEl);
 
     if (!workoutEl) return;
+
     const workout = this.workouts.find(
       (work) => work.id == workoutEl.dataset.id
     );
-    this.#map.setView(workout.coords, 14, {
-      animate: true,
-      pan: { duration: 1 },
+
+    if (action === 'delete') {
+      this.#deleteWorkout(workout.id);
+    } else if (action === 'edit') {
+      this.#editWorkout(workout.id);
+    } else {
+      // Pan to workout on map
+      this.#map.setView(workout.coords, 14, {
+        animate: true,
+        pan: { duration: 1 },
+      });
+    }
+  }
+
+  #deleteWorkout(id) {
+    if (!confirm('Bạn có chắc muốn xóa bài tập này?')) return;
+
+    // Remove from workouts array
+    this.workouts = this.workouts.filter((work) => work.id !== id);
+
+    // Remove marker from map
+    const markerObj = this.#markers.find((m) => m.id === id);
+    if (markerObj) {
+      this.#map.removeLayer(markerObj.marker);
+      this.#markers = this.#markers.filter((m) => m.id !== id);
+    }
+
+    // Remove from DOM
+    const workoutEl = document.querySelector(`[data-id="${id}"]`);
+    if (workoutEl) workoutEl.remove();
+
+    // Update localStorage
+    this._setLocalStorage();
+  }
+
+  #editWorkout(id) {
+    const workout = this.workouts.find((work) => work.id === id);
+    if (!workout) return;
+
+    // Enter edit mode
+    this.#editMode = true;
+    this.#editId = id;
+
+    // Show form with workout data
+    form.classList.remove('hidden');
+    inputType.value = workout.type;
+    inputDistance.value = workout.distance;
+    inputDuration.value = workout.duration;
+
+    if (workout.type === 'running') {
+      inputCadence.value = workout.cadence;
+    } else {
+      inputElevation.value = workout.elevation;
+    }
+
+    this.#toggleElevationField();
+    inputDistance.focus();
+
+    // Change form button text
+    const formBtn = form.querySelector('.form__btn');
+    formBtn.textContent = 'Cập nhật';
+  }
+
+  #deleteAllWorkouts() {
+    if (!this.workouts.length) return;
+    if (!confirm('Bạn có chắc muốn xóa tất cả bài tập?')) return;
+
+    // Remove all markers
+    this.#markers.forEach(({ marker }) => this.#map.removeLayer(marker));
+    this.#markers = [];
+
+    // Remove all workouts from DOM
+    document.querySelectorAll('.workout').forEach((el) => el.remove());
+
+    // Clear workouts array
+    this.workouts = [];
+
+    // Clear localStorage
+    localStorage.removeItem('workouts');
+
+    // Reset sort dropdown
+    sortDropdown.value = '';
+  }
+
+  #sortWorkouts(e) {
+    const sortBy = e.target.value;
+    if (!sortBy) return;
+
+    // Sort workouts array
+    this.workouts.sort((a, b) => {
+      if (sortBy === 'distance') return b.distance - a.distance;
+      if (sortBy === 'duration') return b.duration - a.duration;
+      if (sortBy === 'date') return new Date(b.date) - new Date(a.date);
+      return 0;
     });
+
+    // Re-render workout list
+    document.querySelectorAll('.workout').forEach((el) => el.remove());
+    this.workouts.forEach((workout) => this.#renderWorkout(workout));
+
+    // Update localStorage
+    this._setLocalStorage();
   }
 }
 
